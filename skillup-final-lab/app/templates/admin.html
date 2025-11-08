@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"/><title>Admin - SkillUp Lab</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+  <h1>Admin - SkillUp Lab (no-auth)</h1>
+  <h2>Faults</h2>
+  <div>
+    {% for k,v in faults.items() %}
+      <div style="border:1px solid #ddd; padding:6px; margin:4px;">
+        <strong>{{k}}</strong> - enabled: {{v.enabled}} - p: {{v.p}}
+        <form onsubmit="toggleFault(event,'{{k}}');">
+          <input type="hidden" name="name" value="{{k}}"/>
+          <button type="submit">Toggle</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2>Schedules</h2>
+  <ul>
+    {% for s in schedules %}
+      <li>{{s[1]}} - cron: {{s[2]}} - payload: {{s[3]}}</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Create schedule</h3>
+  <form id="schForm" onsubmit="createSched(event);">
+    <label>name</label><input id="sname"/><br/>
+    <label>cron (m h D M W)</label><input id="scron" placeholder="0 13 * * *"/><br/>
+    <label>payload JSON</label><input id="spayload" placeholder='{"action":"enable","fault":"latency"}' style="width:60%"/><br/>
+    <button>Create</button>
+  </form>
+
+<script>
+function toggleFault(e, name){
+  e.preventDefault();
+  fetch('/admin/faults/config', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({[name]: {enabled: true}}) // this toggles to true always; for simple demo
+  }).then(()=>location.reload())
+}
+function createSched(e){
+  e.preventDefault();
+  const name = document.getElementById('sname').value;
+  const cron = document.getElementById('scron').value;
+  const payload = document.getElementById('spayload').value;
+  fetch('/admin/schedule',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name,cron,payload: JSON.parse(payload)})})
+  .then(()=>location.reload())
+}
+</script>
+</body>
+</html>
