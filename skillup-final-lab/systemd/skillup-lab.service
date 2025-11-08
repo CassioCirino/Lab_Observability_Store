@@ -1,0 +1,14 @@
+[Unit]
+Description=SkillUp Final Lab Flask App
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/skillup-final-lab
+Environment="PATH=/opt/skillup-final-lab/venv/bin"
+ExecStart=/opt/skillup-final-lab/venv/bin/gunicorn --bind 0.0.0.0:8080 app.app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
