@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>SkillUp Shop - Home</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header>
+    <h1>SkillUp Shop</h1>
+    <a href="/logout">Logout</a> | <a href="/admin">Admin</a> | <a href="/status">Status</a>
+  </header>
+  <main>
+    <section>
+      <h2>Bem-vindo</h2>
+      <div id="skillup-user-tags" style="border:1px solid #eee; padding:8px; width:320px;">
+        <div>user-tag-1: <span id="user-tag-1">{{display}}</span></div>
+        <div>user-tag-2: <span id="user-tag-2">{{display}}</span></div>
+        <div>user-tag-3: <span id="user-tag-3">{{display}}</span></div>
+        <div>user-tag-4: <span id="user-tag-4">{{display}}</span></div>
+        <div>user-tag-5: <span id="user-tag-5">{{display}}</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Busca</h3>
+      <form action="/search" method="get">
+        <input name="q" placeholder="Buscar produto..." />
+        <button type="submit">Buscar</button>
+      </form>
+    </section>
+  </main>
+
+  {% if front_long_ms and front_long_ms>0 %}
+  <script>
+    // simulate long task: busy loop for N ms
+    (function(){
+      var ms = {{front_long_ms}};
+      var start = performance.now();
+      while(performance.now() - start < ms) {
+        // busy
+        for (var i=0;i<10000;i++){ Math.sqrt(i); }
+      }
+      console.log("Simulated long task", ms, "ms");
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>
