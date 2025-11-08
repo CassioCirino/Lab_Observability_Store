@@ -1,38 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# run as root (or use sudo)
 if [[ $EUID -ne 0 ]]; then
-  echo "Run as root: sudo ./install.sh"
-  exit 1
+  echo "Execute como root: sudo ./install.sh"; exit 1
 fi
 
-# Update & prerequisites
 apt-get update -y
-apt-get install -y python3 python3-venv python3-pip build-essential git curl
+apt-get install -y python3 python3-venv python3-pip git curl build-essential stress-ng || true
 
-# Optional: install stress-ng if available (used by stress.py)
-apt-get install -y stress-ng || true
-
-# Create app dir
 APP_DIR=/opt/skillup-final-lab
-mkdir -p $APP_DIR
-cp -r . $APP_DIR
-chown -R $(whoami) $APP_DIR
+mkdir -p "$APP_DIR"
+cp -r . "$APP_DIR"
 
-# Create venv
-python3 -m venv $APP_DIR/venv
-$APP_DIR/venv/bin/pip install --upgrade pip
-$APP_DIR/venv/bin/pip install -r $APP_DIR/requirements.txt
+python3 -m venv "$APP_DIR/venv"
+"$APP_DIR/venv/bin/pip" install --upgrade pip setuptools wheel
+"$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 
-# Create DB dir
-mkdir -p $APP_DIR/db
-export DATABASE_FILE=$APP_DIR/db/skillup.db
+# Garante DB inicializado
+mkdir -p "$APP_DIR/db"
+DATABASE_FILE="$APP_DIR/db/skillup.db"
+"$APP_DIR/venv/bin/python3" "$APP_DIR/app/db_init.py" "$DATABASE_FILE"
 
-# Initialize database and seed
-$APP_DIR/venv/bin/python3 $APP_DIR/app/db_init.py $DATABASE_FILE
-
-# Copy systemd service
+# Unit systemd com ExecStartPre para garantir DB
 cat > /etc/systemd/system/skillup-lab.service <<'EOS'
 [Unit]
 Description=SkillUp Final Lab Flask App
@@ -43,6 +32,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/skillup-final-lab
 Environment="PATH=/opt/skillup-final-lab/venv/bin"
+ExecStartPre=/opt/skillup-final-lab/venv/bin/python3 /opt/skillup-final-lab/app/db_init.py /opt/skillup-final-lab/db/skillup.db
 ExecStart=/opt/skillup-final-lab/venv/bin/gunicorn --bind 0.0.0.0:8080 app.app:app
 Restart=always
 
@@ -52,6 +42,6 @@ EOS
 
 systemctl daemon-reload
 systemctl enable skillup-lab.service
+systemctl restart skillup-lab.service
 
-echo "Installation complete."
-echo "Start service with: systemctl start skillup-lab.service"
+echo "OK. Verifique em: systemctl status skillup-lab.service"
