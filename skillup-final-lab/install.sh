@@ -1,31 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Diretórios da APP (note o subdiretório skillup-final-lab)
-REPO_DIR="/opt/skillup-final-lab"
-APP_DIR="/opt/skillup-final-lab/skillup-final-lab"
-UNIT_FILE="/etc/systemd/system/skillup-lab.service"
-DB_DIR="$APP_DIR/db"
-DB_FILE="$DB_DIR/skillup.db"
-VENV_DIR="$APP_DIR/venv"
-REQUIREMENTS="$APP_DIR/requirements.txt"
+# Este script deve ser executado DENTRO de skillup-final-lab/
+# Pode ser chamado pelo quick-install.sh ou manualmente.
 
-echo "[1/6] Preparando pacotes do sistema..."
-apt-get update -y
-apt-get install -y python3 python3-venv python3-pip build-essential curl git
+APP_ROOT="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="${APP_ROOT}/venv"
+DB_DIR="${APP_ROOT}/db"
+DB_FILE="${DB_DIR}/skillup.db"
+SERVICE_NAME="skillup-lab.service"
+PORT="${PORT:-80}"
 
-echo "[2/6] Criando venv e instalando dependências..."
-python3 -m venv "$VENV_DIR"
-"$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel
-# Corrigido: requirements no subdiretório da app
-"$VENV_DIR/bin/pip" install -r "$REQUIREMENTS"
+log() { echo -e "\033[1;32m[INFO]\033[0m $*"; }
+err(){ echo -e "\033[1;31m[ERRO]\033[0m $*"; exit 1; }
 
-echo "[3/6] Garantindo diretório e banco de dados..."
-mkdir -p "$DB_DIR"
-"$VENV_DIR/bin/python3" "$APP_DIR/app/db_init.py" "$DB_FILE"
+require_cmd() { command -v "$1" >/dev/null 2>&1 || err "Comando obrigatório não encontrado: $1"; }
 
-echo "[4/6] Gravando unit do systemd..."
-cat > "$UNIT_FILE" << 'EOS'
+require_cmd python3
+require_cmd pip3
+require_cmd systemctl
+
+log "[1/6] Preparando venv e dependências…"
+python3 -m venv "${VENV_DIR}"
+# pip/setuptools/wheel atualizados
+"${VENV_DIR}/bin/pip" install --upgrade pip setuptools wheel
+# requirements
+REQ="${APP_ROOT}/requirements.txt"
+[ -f "${REQ}" ] || err "requirements.txt não encontrado em ${REQ}"
+"${VENV_DIR}/bin/pip" install -r "${REQ}"
+
+log "[2/6] Banco de dados…"
+mkdir -p "${DB_DIR}"
+DATABASE_FILE="${DB_FILE}" "${VENV_DIR}/bin/python" "${APP_ROOT}/app/db_init.py" "${DB_FILE}" || true
+log "Database em: ${DB_FILE}"
+
+log "[3/6] Unit systemd…"
+UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}"
+cat > "${UNIT_PATH}" <<EOF
 [Unit]
 Description=SkillUp Final Lab Flask App
 After=network.target
@@ -33,27 +44,36 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/skillup-final-lab/skillup-final-lab
-Environment="PATH=/opt/skillup-final-lab/skillup-final-lab/venv/bin"
-Environment="DATABASE_FILE=/opt/skillup-final-lab/skillup-final-lab/db/skillup.db"
-ExecStartPre=/opt/skillup-final-lab/skillup-final-lab/venv/bin/python3 /opt/skillup-final-lab/skillup-final-lab/app/db_init.py /opt/skillup-final-lab/skillup-final-lab/db/skillup.db
-ExecStart=/opt/skillup-final-lab/skillup-final-lab/venv/bin/gunicorn --bind 0.0.0.0:80 app.app:app
+WorkingDirectory=${APP_ROOT}
+Environment=PATH=${VENV_DIR}/bin
+Environment=DATABASE_FILE=${DB_FILE}
+ExecStartPre=${VENV_DIR}/bin/python ${APP_ROOT}/app/db_init.py ${DB_FILE}
+ExecStart=${VENV_DIR}/bin/gunicorn --bind 0.0.0.0:${PORT} app.app:app
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
-EOS
+EOF
 
-echo "[5/6] Ativando serviço..."
+log "[4/6] Habilitando serviço…"
 systemctl daemon-reload
-systemctl enable skillup-lab.service
-systemctl restart skillup-lab.service
+systemctl enable "${SERVICE_NAME}"
+systemctl restart "${SERVICE_NAME}"
 
-echo "[6/6] Liberando porta 80 no firewall (se existir)..."
-ufw allow 80 || true
+log "[5/6] Liberando porta ${PORT} local (iptables; opcional se já feito no bootstrap)…"
+if ! iptables -C INPUT -p tcp --dport "${PORT}" -j ACCEPT 2>/dev/null; then
+  iptables -I INPUT -p tcp --dport "${PORT}" -j ACCEPT || true
+fi
+# persistência se disponível
+if command -v netfilter-persistent >/dev/null 2>&1; then
+  netfilter-persistent save || true
+fi
 
-echo "OK. Verifique o status:"
-systemctl status skillup-lab.service --no-pager -l || true
+log "[6/6] Status:"
+systemctl --no-pager --full status "${SERVICE_NAME}" || true
+
 echo
-echo "Teste local:"
-curl -I http://127.0.0.1/ || true
+log "Teste local (esperado 302 para /login):"
+set +e
+curl -sSI "http://127.0.0.1:${PORT}/" | head -n 5 || true
+set -e
